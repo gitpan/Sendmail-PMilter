@@ -1,4 +1,4 @@
-# $Id: Context.pm,v 1.7 2004/02/25 21:00:11 tvierling Exp $
+# $Id: Context.pm,v 1.10 2004/03/25 18:47:35 tvierling Exp $
 #
 # Copyright (c) 2002-2004 Todd Vierling <tv@pobox.com> <tv@duh.org>
 # All rights reserved.
@@ -38,13 +38,13 @@ use strict;
 use warnings;
 
 use Carp;
-use Sendmail::Milter;
+use Sendmail::Milter 0.18; # get needed constants
 use Socket;
 use UNIVERSAL;
 
 use Sendmail::PMilter qw(:all);
 
-our $VERSION = '0.92';
+our $VERSION = '0.93';
 
 =pod
 
@@ -292,8 +292,10 @@ sub main ($) {
 
 	# XXX better error handling?  die here to let an eval further up get it?
 	if ($err) {
-		$this->write_packet(SMFIR_TEMPFAIL);
+		$this->write_packet(SMFIR_TEMPFAIL) if defined($socket);
 		warn $err;
+	} else {
+		$this->write_packet(SMFIR_CONTINUE) if defined($socket);
 	}
 
 	undef;
@@ -584,7 +586,7 @@ sub chgheader {
 	$value = '' unless defined($value);
 
 	die "chgheader: called outside of EOM\n" if ($this->{cb} ne 'eom');
-	die "chgheader: SMFIF_ADDHDRS not in capability list\n" unless ($this->{callback_flags} & SMFIF_ADDHDRS);
+	die "chgheader: SMFIF_CHGHDRS not in capability list\n" unless ($this->{callback_flags} & SMFIF_CHGHDRS);
 
 	$this->write_packet(SMFIR_CHGHEADER, pack('N', $num)."$header\0$value\0");
 	1;

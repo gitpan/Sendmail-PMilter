@@ -1,4 +1,4 @@
-# $Id: Milter.pm,v 1.4 2004/02/25 20:58:01 tvierling Exp $
+# $Id: Milter.pm,v 1.6 2004/03/25 19:00:18 tvierling Exp $
 #
 # Copyright (c) 2002-2004 Todd Vierling <tv@pobox.com> <tv@duh.org>
 # All rights reserved.
@@ -36,8 +36,6 @@ use base Exporter;
 use strict;
 use warnings;
 
-use Sendmail::PMilter qw(:all %DEFAULT_CALLBACKS);
-
 ##### Symbols exported to the caller
 
 our @EXPORT = qw(
@@ -61,42 +59,76 @@ our @EXPORT = qw(
 our @EXPORT_OK = ( @EXPORT );
 our %EXPORT_TAGS = ( 'all' => [ @EXPORT_OK ] );
 
+##### Protocol constants
+
+# SMFIS_ are not the same as the standard, in order to keep "0" and "1"
+# from being valid response codes by mistake.
+
+use constant SMFIS_CONTINUE	=> 100;
+use constant SMFIS_REJECT	=> 101;
+use constant SMFIS_DISCARD	=> 102;
+use constant SMFIS_ACCEPT	=> 103;
+use constant SMFIS_TEMPFAIL	=> 104;
+
+use constant SMFIF_ADDHDRS	=> 0x01;
+use constant SMFIF_CHGBODY	=> 0x02;
+use constant SMFIF_ADDRCPT	=> 0x04;
+use constant SMFIF_DELRCPT	=> 0x08;
+use constant SMFIF_CHGHDRS	=> 0x10;
+use constant SMFIF_MODBODY	=> SMFIF_CHGBODY;
+
+use constant SMFI_V1_ACTS	=> SMFIF_ADDHDRS|SMFIF_CHGBODY|SMFIF_ADDRCPT|SMFIF_DELRCPT;
+use constant SMFI_V2_ACTS	=> SMFI_V1_ACTS|SMFIF_CHGHDRS;
+use constant SMFI_CURR_ACTS	=> SMFI_V2_ACTS;
+
+##### Callback function names
+
+my @callback_names = qw(close connect helo abort envfrom envrcpt header eoh body eom);
+our %DEFAULT_CALLBACKS = map { $_ => $_.'_callback' } @callback_names;
+
 ##### Version of "official" Sendmail::Milter emulated here
 
 our $VERSION = '0.18';
 
 ##### Global instance of PMilter engine
 
-my $milter = new Sendmail::PMilter;
+my $milter;
 
 ##### Function subroutines
 
 sub auto_getconn ($;$) {
-	unshift(@_, $milter);
+	require Sendmail::PMilter;
+	unshift(@_, get_milter());
 	goto &Sendmail::PMilter::auto_getconn;
 }
 
 sub auto_setconn ($;$) {
-	unshift(@_, $milter);
+	require Sendmail::PMilter;
+	unshift(@_, get_milter());
 	goto &Sendmail::PMilter::auto_setconn;
 }
 
 sub get_milter () {
+	require Sendmail::PMilter;
+	$milter = new Sendmail::PMilter unless defined($milter);
 	$milter;
 }
 
 sub main (;$$) {
-	unshift(@_, $milter);
+	require Sendmail::PMilter;
+	unshift(@_, get_milter());
 	goto &Sendmail::PMilter::main;
 }
 
 sub register ($$;$) {
-	unshift(@_, $milter);
+	require Sendmail::PMilter;
+	unshift(@_, get_milter());
 	goto &Sendmail::PMilter::register;
 }
 
 sub setconn ($) {
-	unshift(@_, $milter);
+	require Sendmail::PMilter;
+	unshift(@_, get_milter());
 	goto &Sendmail::PMilter::setconn;
 }
 

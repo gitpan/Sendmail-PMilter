@@ -1,10 +1,11 @@
 #!/usr/local/bin/perl
-# $Id: protocol-dump.pl,v 1.2 2004/02/20 04:34:48 tvierling Exp $
+# $Id: protocol-dump.pl,v 1.3 2004/03/10 22:33:41 tvierling Exp $
 
 use strict;
 use Carp qw(verbose);
 use Sendmail::Milter 0.18 qw(:all);
 
+# milter name should be the one used in sendmail.mc/sendmail.cf
 my $miltername = shift @ARGV || die "usage: $0 miltername\n";
 
 my %cbs;

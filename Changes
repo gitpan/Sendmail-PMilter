@@ -1,4 +1,4 @@
-$Id: Changes,v 1.9.2.1 2004/03/07 03:58:20 tvierling Exp $
+$Id: Changes,v 1.15 2004/03/25 19:02:25 tvierling Exp $
 
 Revision history for Perl extension Sendmail::PMilter.
 
@@ -21,8 +21,15 @@ Revision history for Perl extension Sendmail::PMilter.
 		(also fixed in 0.91_03)
 	- fixed signal handling in prefork dispatcher
 
-0.92_01  Sun Mar 06 04:05:00 2004 UTC
+0.93  Thu Mar 25 19:15:00 2004 UTC
 	- fixed call to threads::shared::share() to pass varglob, not
 		reference (reported by <schaefer@zanshin.com>)
+		(also fixed in 0.92_01)
 	- [910599] fixed SIGINFO handler to use only a valid signal; will use
 		SIGUSR1 if SIGINFO doesn't exist
+		(also fixed in 0.92_01)
+	- [910602] always send a response to the close packet if the socket
+		is still valid (was doing this for failures, but not for
+		successful closing of the session)
+	- [923156] moved constants from Sendmail::PMilter to Sendmail::Milter
+		to allow the libmilter implementation to coexist

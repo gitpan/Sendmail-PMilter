@@ -1,4 +1,4 @@
-# $Id: PMilter.pm,v 1.14.2.2 2004/03/06 15:31:12 tvierling Exp $
+# $Id: PMilter.pm,v 1.18 2004/03/25 18:47:35 tvierling Exp $
 #
 # Copyright (c) 2002-2004 Todd Vierling <tv@pobox.com> <tv@duh.org>
 # All rights reserved.
@@ -41,11 +41,12 @@ use Carp;
 use Errno;
 use IO::Select;
 use POSIX;
+use Sendmail::Milter 0.18; # get needed constants
 use Socket;
 use Symbol;
 use UNIVERSAL;
 
-our $VERSION = '0.92_01';
+our $VERSION = '0.93';
 our $DEBUG = 0;
 
 =pod
@@ -77,14 +78,6 @@ significantly, and the enhanced APIs and rule logic provided by PMilter
 0.5 and earlier has been factored out for inclusion in a separate package
 to be called Mail::Milter.
 
-               NOTE NOTE NOTE NOTE NOTE NOTE NOTE
-
-       This version of Sendmail::PMilter is NOT well tested.
-       All versions in the 0.xx series WILL have bugs, so
-       USE AT YOUR OWN RISK.
-
-               NOTE NOTE NOTE NOTE NOTE NOTE NOTE
-
 =head1 METHODS
 
 =over 4
@@ -115,33 +108,6 @@ our @EXPORT_OK = (@smflags, qw(
 	%DEFAULT_CALLBACKS
 ));
 our %EXPORT_TAGS = ( all => [ @smflags ] );
-
-##### Protocol constants
-
-# SMFIS_ are not the same as the standard, in order to keep "0" and "1"
-# from being valid response codes by mistake.
-
-use constant SMFIS_CONTINUE	=> 100;
-use constant SMFIS_REJECT	=> 101;
-use constant SMFIS_DISCARD	=> 102;
-use constant SMFIS_ACCEPT	=> 103;
-use constant SMFIS_TEMPFAIL	=> 104;
-
-use constant SMFIF_ADDHDRS	=> 0x01;
-use constant SMFIF_CHGBODY	=> 0x02;
-use constant SMFIF_ADDRCPT	=> 0x04;
-use constant SMFIF_DELRCPT	=> 0x08;
-use constant SMFIF_CHGHDRS	=> 0x10;
-use constant SMFIF_MODBODY	=> SMFIF_CHGBODY;
-
-use constant SMFI_V1_ACTS	=> SMFIF_ADDHDRS|SMFIF_CHGBODY|SMFIF_ADDRCPT|SMFIF_DELRCPT;
-use constant SMFI_V2_ACTS	=> SMFI_V1_ACTS|SMFIF_CHGHDRS;
-use constant SMFI_CURR_ACTS	=> SMFI_V2_ACTS;
-
-##### Callback function names
-
-my @callback_names = qw(close connect helo abort envfrom envrcpt header eoh body eom);
-our %DEFAULT_CALLBACKS = map { $_ => $_.'_callback' } @callback_names;
 
 ##### Methods
 
@@ -276,7 +242,7 @@ sub register ($$$;$) {
 	# make internal copy, and convert to code references
 	$callbacks = { %$callbacks };
 
-	foreach my $cbname (@callback_names) {
+	foreach my $cbname (keys %Sendmail::Milter::DEFAULT_CALLBACKS) {
 		my $cb = $callbacks->{$cbname};
 
 		if (defined($cb) && !UNIVERSAL::isa($cb, 'CODE')) {

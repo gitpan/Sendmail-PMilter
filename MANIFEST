@@ -4,6 +4,7 @@ MANIFEST
 README
 doc/compiling-sendmail-811.txt
 doc/milter-protocol.txt
+examples/crm114-milter.pl
 examples/protocol-dump.pl
 lib/Sendmail/Milter.pm
 lib/Sendmail/PMilter.pm
