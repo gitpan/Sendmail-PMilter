@@ -1,4 +1,4 @@
-# $Id: Milter.pm,v 1.2.2.1 2004/02/23 18:58:40 tvierling Exp $
+# $Id: Milter.pm,v 1.4 2004/02/25 20:58:01 tvierling Exp $
 #
 # Copyright (c) 2002-2004 Todd Vierling <tv@pobox.com> <tv@duh.org>
 # All rights reserved.
@@ -98,6 +98,14 @@ sub register ($$;$) {
 sub setconn ($) {
 	unshift(@_, $milter);
 	goto &Sendmail::PMilter::setconn;
+}
+
+sub setdbg ($) {
+	# no-op
+}
+
+sub settimeout ($) {
+	# no-op
 }
 
 1;

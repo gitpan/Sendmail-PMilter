@@ -1,4 +1,4 @@
-# $Id: PMilter.pm,v 1.9.2.2 2004/02/24 18:54:33 tvierling Exp $
+# $Id: PMilter.pm,v 1.14 2004/02/26 20:03:44 tvierling Exp $
 #
 # Copyright (c) 2002-2004 Todd Vierling <tv@pobox.com> <tv@duh.org>
 # All rights reserved.
@@ -45,6 +45,7 @@ use Socket;
 use Symbol;
 use UNIVERSAL;
 
+our $VERSION = '0.92';
 our $DEBUG = 0;
 
 =pod
@@ -75,12 +76,6 @@ scripts written for PMilter 0.5 and earlier.  The API has been reworked
 significantly, and the enhanced APIs and rule logic provided by PMilter
 0.5 and earlier has been factored out for inclusion in a separate package
 to be called Mail::Milter.
-
-So, in short, this package should be regarded as a drop-in replacement
-for Sendmail::Milter, with only some very minor API extensions related
-to the milter protocol itself.  (Sendmail::PMilter includes a wrapper
-module named Sendmail::Milter to allow old milter scripts to continue
-working as-is with this package.)
 
                NOTE NOTE NOTE NOTE NOTE NOTE NOTE
 
@@ -120,10 +115,6 @@ our @EXPORT_OK = (@smflags, qw(
 	%DEFAULT_CALLBACKS
 ));
 our %EXPORT_TAGS = ( all => [ @smflags ] );
-
-##### Version of Sendmail::PMilter in use
-
-our $VERSION = '0.91_02';
 
 ##### Protocol constants
 
@@ -796,13 +787,12 @@ sub prefork_dispatcher () {
 	my $killall = sub {
 		my $sig = shift;
 
-		kill -2, $$; # SIGINT to pgrp
-		$SIG{$sig} = 'DEFAULT';
+		kill 'TERM', keys %children;
+		exit 0;
 	};
-	local $SIG{HUP} = $killall;
 	local $SIG{INT} = $killall;
-	local $SIG{TERM} = $killall;
 	local $SIG{QUIT} = $killall;
+	local $SIG{TERM} = $killall;
 
 	setpgrp();
 
@@ -816,8 +806,16 @@ sub prefork_dispatcher () {
 				die "fork: $!" unless defined($pid);
 
 				if ($pid) {
+					# Perl reset these to IGNORE.  Restore them.
+					$SIG{INT} = $killall;
+					$SIG{QUIT} = $killall;
+					$SIG{TERM} = $killall;
 					$children{$pid} = 1;
 				} else {
+					# Perl reset these to IGNORE.  Set to defaults.
+					$SIG{INT} = 'DEFAULT';
+					$SIG{QUIT} = 'DEFAULT';
+					$SIG{TERM} = 'DEFAULT';
 					&$child_dispatcher(@_);
 					exit 0;
 				}

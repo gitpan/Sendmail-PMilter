@@ -1,7 +1,7 @@
-Sendmail::PMilter version 0.91
+Sendmail::PMilter version 0.92
 ==============================
 
-$Id: README,v 1.7 2004/02/22 14:54:29 tvierling Exp $
+$Id: README,v 1.10 2004/02/25 16:45:47 tvierling Exp $
 
 Sendmail::PMilter is a mail filtering API implementing the Sendmail
 milter protocol in pure Perl.  This allows Sendmail servers (and perhaps
@@ -13,13 +13,6 @@ scripts written for PMilter 0.5 and earlier.  The API has been reworked
 significantly, and the enhanced APIs and rule logic provided by PMilter
 0.5 and earlier has been factored out for inclusion in a separate package
 to be called Mail::Milter.
-
-0.91 significantly improves documentation, and introduces the "prefork"
-and "ithread" dispatchers, allowing for more resource-efficient milter
-implementations.  The dispatcher used may be set with the
-PMILTER_DISPATCHER environment variable for easier use with milters using
-the Sendmail::Milter compatibility API.  See "perldoc Sendmail::PMilter"
-for details.
 
                NOTE NOTE NOTE NOTE NOTE NOTE NOTE
 
@@ -47,6 +40,9 @@ This module requires these other modules and libraries:
    Socket6 (optional, if inet6: connection method is used)
 
 COPYRIGHT AND LICENCE
+
+Sendmail::PMilter is part of the PMilter project:
+    http://pmilter.sourceforge.net/
 
 The PMilter packages are:
 

@@ -1,4 +1,4 @@
-#   $Header: /cvsroot/pmilter/pmilter/t/00_pmilter.t,v 1.2 2004/02/22 08:31:41 rob_au Exp $
+#   $Header: /cvsroot/pmilter/pmilter/t/00_pmilter.t,v 1.4 2004/02/26 22:28:58 tvierling Exp $
 
 #   Copyright (c) 2002-2004 Todd Vierling <tv@duh.org> <tv@pobox.com>
 #   Copyright (c) 2004 Robert Casey <rob.casey@bluebottle.com>
@@ -9,7 +9,7 @@
 
 BEGIN {
 
-    use Test::More 'no_plan';
+    use Test::More 'tests' => 55;
 
     use_ok('Sendmail::PMilter');
 }
@@ -100,7 +100,7 @@ is( $milter->get_sendmail_cf, '/etc/mail/sendmail.cf' );
 #   parameter not having been defined.
 
 eval { $milter->auto_getconn() };
-ok( ! defined $@ );
+ok( defined $@ );
 
 my @sockets = (
         'local:/var/run/milter.sock',

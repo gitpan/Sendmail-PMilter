@@ -1,4 +1,4 @@
-# $Id$
+# $Id: Context.pm,v 1.7 2004/02/25 21:00:11 tvierling Exp $
 #
 # Copyright (c) 2002-2004 Todd Vierling <tv@pobox.com> <tv@duh.org>
 # All rights reserved.
@@ -43,6 +43,26 @@ use Socket;
 use UNIVERSAL;
 
 use Sendmail::PMilter qw(:all);
+
+our $VERSION = '0.92';
+
+=pod
+
+=head1 SYNOPSIS
+
+Sendmail::PMilter::Context - per-connection milter context
+
+=head1 DESCRIPTION
+
+A Sendmail::PMilter::Context is the context object passed to milter callback
+functions as the first argument, typically named "$ctx" for convenience.  
+This manual explains publicly accessible operations on $ctx.
+
+=head1 METHODS
+
+=over 4
+
+=cut
 
 ##### Symbols exported to the caller
 
@@ -189,11 +209,21 @@ sub main ($) {
 				my $host = $1;
 				my $af = $2;
 				my ($port, $addr) = unpack('nZ*', $buf);
+				my $pack; # default undef
 
-				# XXX should be able to pack inet6 too?
-				my $pack = ($af eq SMFIA_INET ?
-					pack_sockaddr_in($port, inet_aton($addr)) :
-					pack_sockaddr_in(0, INADDR_ANY));
+				if ($af eq SMFIA_INET) {
+					$pack = pack_sockaddr_in($port, inet_aton($addr));
+				} elsif ($af eq SMFIA_INET6) {
+					$pack = eval {
+						require Socket6;
+						Socket6::pack_sockaddr_in6($port,
+							Socket6::inet_pton(&Socket6::AF_INET6, $addr));
+					};
+				} elsif ($af eq SMFIA_UNIX) {
+					$pack = eval {
+						sockaddr_un($addr);
+					};
+				}
 
 				$this->call_hooks('connect', $host, $pack);
 			} elsif ($cmd eq SMFIC_MACRO) {
@@ -347,133 +377,23 @@ sub call_hooks ($$;@) {
 
 ##### General methods
 
-sub getpriv ($) {
-	my $this = shift;
-
-	$this->{priv};
-}
-
-sub getsymval ($$) {
-	my $this = shift;
-	my $key = shift;
-
-	defined($this->{symbols}) ? $this->{symbols}{$key} : undef;
-}
-
-sub setpriv ($$) {
-	my $this = shift;
-	$this->{priv} = shift;
-	1;
-}
-
-sub setreply ($$$$) {
-	my $this = shift;
-	my $rcode = shift || '';
-	my $xcode = shift || '';
-	my $message = shift || '';
-
-	if ($rcode !~ /^[45]\d\d$/ || $xcode !~ /^[45]\.\d\.\d$/ || substr($rcode, 0, 1) ne substr($xcode, 0, 1)) {
-		warn 'setreply: bad reply arguments';
-		return undef;
-	}
-
-	$this->{reply} = "$rcode $xcode $message";
-	1;
-}
-
-##### Protocol action methods
-
-sub addheader {
-	my $this = shift;
-	my $header = shift || die "addheader: no header name\n";
-	my $value = shift || die "addheader: no header value\n";
-
-	die "addheader: called outside of EOM\n" if ($this->{cb} ne 'eom');
-	die "addheader: SMFIF_ADDHDRS not in capability list\n" unless ($this->{callback_flags} & SMFIF_ADDHDRS);
-
-	$this->write_packet(SMFIR_ADDHEADER, "$header\0$value\0");
-	1;
-}
-
-sub addrcpt {
-	my $this = shift;
-	my $rcpt = shift || die "addrcpt: no recipient specified\n";
-
-	die "addrcpt: called outside of EOM\n" if ($this->{cb} ne 'eom');
-	die "addrcpt: SMFIF_ADDRCPT not in capability list\n" unless ($this->{callback_flags} & SMFIF_ADDRCPT);
-
-	$this->write_packet(SMFIR_ADDRCPT, "$rcpt\0");
-	1;
-}
-
-sub chgheader {
-	my $this = shift;
-	my $header = shift || die "chgheader: no header name\n";
-	my $num = shift || 0;
-	my $value = shift;
-
-	$value = '' unless defined($value);
-
-	die "chgheader: called outside of EOM\n" if ($this->{cb} ne 'eom');
-	die "chgheader: SMFIF_ADDHDRS not in capability list\n" unless ($this->{callback_flags} & SMFIF_ADDHDRS);
-
-	$this->write_packet(SMFIR_CHGHEADER, pack('N', $num)."$header\0$value\0");
-	1;
-}
-
-sub delrcpt {
-	my $this = shift;
-	my $rcpt = shift || die "delrcpt: no recipient specified\n";
-
-	die "delrcpt: called outside of EOM\n" if ($this->{cb} ne 'eom');
-	die "delrcpt: SMFIF_DELRCPT not in capability list\n" unless ($this->{callback_flags} & SMFIF_DELRCPT);
-
-	$this->write_packet(SMFIR_DELRCPT, "$rcpt\0");
-	1;
-}
-
-sub replacebody {
-	my $this = shift;
-	my $chunk = shift;
-
-	die "replacebody: called outside of EOM\n" if ($this->{cb} ne 'eom');
-	die "replacebody: SMFIF_CHGBODY not in capability list\n" unless ($this->{callback_flags} & SMFIF_CHGBODY);
-
-	my $len = length($chunk);
-	my $socket = $this->{socket};
-
-	$len = pack('N', ($len + 1));
-	$socket->syswrite($len);
-	$socket->syswrite(SMFIR_REPLBODY);
-	$socket->syswrite($chunk);
-	1;
-}
-
-1;
-
-__END__
-
 =pod
-
-=head1 SYNOPSIS
-
-Sendmail::PMilter::Context - per-connection milter context
-
-=head1 DESCRIPTION
-
-A Sendmail::PMilter::Context is the context object passed to milter callback
-functions as the first argument, typically named "$ctx" for convenience.  
-This manual explains publicly accessible operations on $ctx.
-
-=head1 METHODS
-
-=over 4
 
 =item $ctx->getpriv
 
 Returns the private data object for this milter instance, set by
 $ctx->setpriv() (see below).  Returns undef if setpriv has never been called
 by this milter instance.
+
+=cut
+
+sub getpriv ($) {
+	my $this = shift;
+
+	$this->{priv};
+}
+
+=pod
 
 =item $ctx->getsymval(NAME)
 
@@ -531,6 +451,17 @@ only available after a specific phase is reached, and some macros may only
 be available from certain MTA implementations.  Care should be taken to
 check for undef returns in order to cover these cases.
 
+=cut
+
+sub getsymval ($$) {
+	my $this = shift;
+	my $key = shift;
+
+	defined($this->{symbols}) ? $this->{symbols}{$key} : undef;
+}
+
+=pod
+
 =item $ctx->setpriv(DATA)
 
 This is the place to store milter-private data that is sensitive to the
@@ -539,6 +470,16 @@ an arrayref or hashref is initialized in the "connect" callback and set with
 $ctx->setpriv.
 
 This value can be retrieved on subsequent callback runs with $ctx->getpriv.
+
+=cut
+
+sub setpriv ($$) {
+	my $this = shift;
+	$this->{priv} = shift;
+	1;
+}
+
+=pod
 
 =item $ctx->setreply(RCODE, XCODE, MESSAGE)
 
@@ -559,12 +500,49 @@ Returns a true value on success, undef on failure.  In the case of failure,
 typically only caused by bad parameters, a generic message will still be
 sent based on the SMFIS_* return code.
 
+=cut
+
+sub setreply ($$$$) {
+	my $this = shift;
+	my $rcode = shift || '';
+	my $xcode = shift || '';
+	my $message = shift || '';
+
+	if ($rcode !~ /^[45]\d\d$/ || $xcode !~ /^[45]\.\d\.\d$/ || substr($rcode, 0, 1) ne substr($xcode, 0, 1)) {
+		warn 'setreply: bad reply arguments';
+		return undef;
+	}
+
+	$this->{reply} = "$rcode $xcode $message";
+	1;
+}
+
+##### Protocol action methods
+
+=pod
+
 =item $ctx->addheader(HEADER, VALUE)
 
 Add header HEADER with value VALUE to this mail.  Does not change any
 existing headers with the same name.  Only callable from the "eom" callback.
 
 Returns a true value on success, undef on failure.
+
+=cut
+
+sub addheader {
+	my $this = shift;
+	my $header = shift || die "addheader: no header name\n";
+	my $value = shift || die "addheader: no header value\n";
+
+	die "addheader: called outside of EOM\n" if ($this->{cb} ne 'eom');
+	die "addheader: SMFIF_ADDHDRS not in capability list\n" unless ($this->{callback_flags} & SMFIF_ADDHDRS);
+
+	$this->write_packet(SMFIR_ADDHEADER, "$header\0$value\0");
+	1;
+}
+
+=pod
 
 =item $ctx->addrcpt(ADDRESS)
 
@@ -573,12 +551,46 @@ from the "eom" callback.
 
 Returns a true value on success, undef on failure.
 
+=cut
+
+sub addrcpt {
+	my $this = shift;
+	my $rcpt = shift || die "addrcpt: no recipient specified\n";
+
+	die "addrcpt: called outside of EOM\n" if ($this->{cb} ne 'eom');
+	die "addrcpt: SMFIF_ADDRCPT not in capability list\n" unless ($this->{callback_flags} & SMFIF_ADDRCPT);
+
+	$this->write_packet(SMFIR_ADDRCPT, "$rcpt\0");
+	1;
+}
+
+=pod
+
 =item $ctx->chgheader(HEADER, INDEX, VALUE)
 
 Change the INDEX'th header of name HEADER to the value VALUE.  Only callable
 from the "eom" callback.
 
 Returns a true value on success, undef on failure.
+
+=cut
+
+sub chgheader {
+	my $this = shift;
+	my $header = shift || die "chgheader: no header name\n";
+	my $num = shift || 0;
+	my $value = shift;
+
+	$value = '' unless defined($value);
+
+	die "chgheader: called outside of EOM\n" if ($this->{cb} ne 'eom');
+	die "chgheader: SMFIF_ADDHDRS not in capability list\n" unless ($this->{callback_flags} & SMFIF_ADDHDRS);
+
+	$this->write_packet(SMFIR_CHGHEADER, pack('N', $num)."$header\0$value\0");
+	1;
+}
+
+=pod
 
 =item $ctx->delrcpt(ADDRESS)
 
@@ -591,6 +603,21 @@ Returns a true value on success, undef on failure.  A success return does
 not necessarily indicate that the recipient was successfully removed, but
 rather that the command was queued for processing.
 
+=cut
+
+sub delrcpt {
+	my $this = shift;
+	my $rcpt = shift || die "delrcpt: no recipient specified\n";
+
+	die "delrcpt: called outside of EOM\n" if ($this->{cb} ne 'eom');
+	die "delrcpt: SMFIF_DELRCPT not in capability list\n" unless ($this->{callback_flags} & SMFIF_DELRCPT);
+
+	$this->write_packet(SMFIR_DELRCPT, "$rcpt\0");
+	1;
+}
+
+=pod
+
 =item $ctx->replacebody(BUFFER)
 
 Replace the message body with the data in BUFFER (a scalar).  This method
@@ -600,13 +627,32 @@ End-of-line should be represented by CR-LF ("\r\n").  Only callable from the
 
 Returns a true value on success, undef on failure.
 
-=back
-
 =cut
+
+sub replacebody {
+	my $this = shift;
+	my $chunk = shift;
+
+	die "replacebody: called outside of EOM\n" if ($this->{cb} ne 'eom');
+	die "replacebody: SMFIF_CHGBODY not in capability list\n" unless ($this->{callback_flags} & SMFIF_CHGBODY);
+
+	my $len = length($chunk);
+	my $socket = $this->{socket};
+
+	$len = pack('N', ($len + 1));
+	$socket->syswrite($len);
+	$socket->syswrite(SMFIR_REPLBODY);
+	$socket->syswrite($chunk);
+	1;
+}
 
 1;
 
 __END__
+
+=pod
+
+=back
 
 =head1 SEE ALSO
 

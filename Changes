@@ -1,0 +1,22 @@
+$Id: Changes,v 1.9 2004/02/27 15:01:59 tvierling Exp $
+
+Revision history for Perl extension Sendmail::PMilter.
+
+0.90  Thu Feb 19 16:20:00 2004 UTC
+	- first release of new architecture based on legacy codebase
+
+0.91  Sun Feb 22 15:20:00 2004 UTC
+	- added PMILTER_DISPATCHER env var
+	- added "ithread" and "prefork" dispatchers
+	- major doc overhaul
+	- moved sources to "lib"
+
+0.92  Fri Feb 27 15:15:00 2004 UTC
+	- added INET6 and UNIX socket support to sockaddr argument passed
+		to the "connect" callback
+	- fixed bug where a setreply() value was held beyond one callback
+		(also fixed in 0.91_02)
+	- implemented Sendmail::Milter::settimeout() and
+		Sendmail::Milter::setdbg() as no-ops; needed for completeness
+		(also fixed in 0.91_03)
+	- fixed signal handling in prefork dispatcher
