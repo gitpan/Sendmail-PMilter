@@ -46,7 +46,7 @@ use Socket;
 use Symbol;
 use UNIVERSAL;
 
-our $VERSION = '0.94';
+our $VERSION = '0.95';
 our $DEBUG = 0;
 
 =pod

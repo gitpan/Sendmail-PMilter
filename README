@@ -1,7 +1,7 @@
-Sendmail::PMilter version 0.94
+Sendmail::PMilter version 0.95
 ==============================
 
-$Id: README,v 1.13 2004/08/04 17:12:37 tvierling Exp $
+$Id: README,v 1.14 2004/08/06 14:20:19 tvierling Exp $
 
 Sendmail::PMilter is a mail filtering API implementing the Sendmail
 milter protocol in pure Perl.  This allows Sendmail servers (and perhaps

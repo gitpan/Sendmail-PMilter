@@ -1,9 +1,14 @@
 #!/usr/local/bin/perl -I../lib
-# $Id: protocol-dump.pl,v 1.5 2004/08/02 17:55:36 tvierling Exp $
+# $Id: symbol-dump.pl,v 1.1 2004/08/02 17:56:14 tvierling Exp $
+#
+# Similar to protocol-dump.pl, but dumps macro symbol table for
+# specific callbacks.
+#
 
 use strict;
 use Carp qw(verbose);
 use Sendmail::PMilter qw(:all);
+use Data::Dumper;
 
 # milter name should be the one used in sendmail.mc/sendmail.cf
 my $miltername = shift @ARGV || die "usage: $0 miltername\n";
@@ -14,6 +19,9 @@ for my $cb (qw(close connect helo abort envfrom envrcpt header eoh eom)) {
 		my $ctx = shift;
 
 		print "$$: $cb: @_\n";
+		if ($cb =~ /^(connect|help|envfrom|envrcpt)$/) {
+			print Dumper($ctx->{symbols})."\n";
+		}
 		SMFIS_CONTINUE;
 	}
 }

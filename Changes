@@ -1,6 +1,11 @@
-$Id: Changes,v 1.26 2004/08/04 17:12:37 tvierling Exp $
+$Id: Changes,v 1.28 2004/08/10 21:10:36 tvierling Exp $
 
 Revision history for Perl extension Sendmail::PMilter.
+
+0.95  Tue Aug 10 21:10:35 2004 UTC
+	- fixed installation location of Sendmail::Milter; it was quite wrong
+		(reported by SL <milter@free.fr>)
+	- fixed manifest (0.94 was missing some metadata files)
 
 0.94  Wed Aug 04 17:10:00 2004 UTC
 	- [923158] made installation of Sendmail::Milter layer optional

@@ -1,4 +1,4 @@
-# $Id: Makefile.PL,v 1.10 2004/08/04 15:09:19 tvierling Exp $
+# $Id: Makefile.PL,v 1.11 2004/08/10 21:10:36 tvierling Exp $
 
 use 5.006;
 use ExtUtils::MakeMaker;
@@ -21,7 +21,7 @@ my %PM = (
         'lib/Sendmail/PMilter.pm'           =>  '$(INST_LIBDIR)/PMilter.pm',
         'lib/Sendmail/PMilter/Context.pm'   =>  '$(INST_LIBDIR)/PMilter/Context.pm'
 );
-$PM{'lib/Sendmail/Milter.pm'} = '$(INST_LIBDIR)/Sendmail/Milter.pm' if $install;
+$PM{'lib/Sendmail/Milter.pm'} = '$(INST_LIBDIR)/Milter.pm' if $install;
 
 WriteMakefile(
     ABSTRACT_FROM	=> 'lib/Sendmail/PMilter.pm',
