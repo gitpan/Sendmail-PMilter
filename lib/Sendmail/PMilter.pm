@@ -1,4 +1,4 @@
-# $Id: PMilter.pm,v 1.14 2004/02/26 20:03:44 tvierling Exp $
+# $Id: PMilter.pm,v 1.14.2.2 2004/03/06 15:31:12 tvierling Exp $
 #
 # Copyright (c) 2002-2004 Todd Vierling <tv@pobox.com> <tv@duh.org>
 # All rights reserved.
@@ -45,7 +45,7 @@ use Socket;
 use Symbol;
 use UNIVERSAL;
 
-our $VERSION = '0.92';
+our $VERSION = '0.92_01';
 our $DEBUG = 0;
 
 =pod
@@ -678,7 +678,7 @@ sub ithread_dispatcher {
 
 	my $nchildren = 0;
 
-	threads::shared::share(\$nchildren);
+	threads::shared::share($nchildren);
 
 	sub {
 		my $this = shift;
@@ -686,7 +686,8 @@ sub ithread_dispatcher {
 		my $handler = shift;
 		my $maxchildren = $this->get_max_interpreters();
 
-		local $SIG{INFO} = sub {
+		my $siginfo = exists($SIG{INFO}) ? 'INFO' : 'USR1';
+		local $SIG{$siginfo} = sub {
 			print STDERR "Number of active children: $nchildren\n" if ($DEBUG > 0);
 		};
 
@@ -768,7 +769,9 @@ sub prefork_dispatcher () {
 		my $i = 0;
 
 		local $SIG{PIPE} = 'IGNORE'; # so close_callback will be reached
-		local $SIG{INFO} = sub {
+
+		my $siginfo = exists($SIG{INFO}) ? 'INFO' : 'USR1';
+		local $SIG{$siginfo} = sub {
 			print STDERR "$$: requests handled: $i\n" if ($DEBUG > 0);
 		};
 
@@ -862,7 +865,9 @@ sub postfork_dispatcher () {
 
 		# Decrement child count on child exit.
 		local $SIG{CHLD} = $sigchld;
-		local $SIG{INFO} = sub {
+
+		my $siginfo = exists($SIG{INFO}) ? 'INFO' : 'USR1';
+		local $SIG{$siginfo} = sub {
 			print STDERR "Number of active children: $nchildren\n" if ($DEBUG > 0);
 		};
 
@@ -898,7 +903,7 @@ sub postfork_dispatcher () {
 				undef $lsocket;
 				undef $@;
 				$SIG{PIPE} = 'IGNORE'; # so close_callback will be reached
-				$SIG{INFO} = 'DEFAULT';
+				$SIG{$siginfo} = 'DEFAULT';
 
 				&$handler($socket);
 				$socket->close() if defined($socket);
