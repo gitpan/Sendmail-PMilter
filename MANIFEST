@@ -16,3 +16,4 @@ t/files/sendmail1.cf
 t/files/sendmail2.cf
 t/files/sendmail3.cf
 t/files/sendmail4.cf
+META.yml                                 Module meta-data (added by MakeMaker)

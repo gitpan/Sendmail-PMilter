@@ -1,4 +1,4 @@
-$Id: milter-protocol.txt,v 1.2 2003/09/29 18:25:28 tvierling Exp $
+$Id: milter-protocol.txt,v 1.6 2004/08/04 16:27:50 tvierling Exp $
 _______________________________________
 THE SENDMAIL MILTER PROTOCOL, VERSION 2
 
@@ -153,6 +153,7 @@ be performed by the milter MUST be included in this field.)
 0x04	SMFIF_ADDRCPT		Add recipients (SMFIR_ADDRCPT)
 0x08	SMFIF_DELRCPT		Remove recipients (SMFIR_DELRCPT)
 0x10	SMFIF_CHGHDRS		Change or delete headers (SMFIR_CHGHEADER)
+0x20	SMFIF_QUARANTINE	Quarantine message (SMFIR_QUARANTINE)
 
 (XXX: SMFIF_DELRCPT has an impact on how address rewriting affects
 addresses sent in the SMFIC_RCPT phase.  This will be described in a
@@ -286,9 +287,8 @@ char	value[]		Value of header, NUL terminated
 			Expected response:  Accept/reject action
 
 char	args[][]	Array of strings, NUL terminated (address at index 0).
-
-(XXX: The arguments beyond index 0 will be described in a future
-revision of this document.)
+			args[0] is sender, with <> qualification.
+			args[1] and beyond are ESMTP arguments, if any.
 
 **
 
@@ -310,9 +310,8 @@ uint32	protocol	Bitmask of possible protocol content from SMFIP_*
 			Expected response:  Accept/reject action
 
 char	args[][]	Array of strings, NUL terminated (address at index 0).
-
-(XXX: The arguments beyond index 0 will be described in a future
-revision of this document.)
+			args[0] is recipient, with <> qualification.
+			args[1] and beyond are ESMTP arguments, if any.
 
 **
 
@@ -353,14 +352,9 @@ at that point.)
 
 **
 
-'b'	SMFIR_REPLBODY	Replace body chunk (modification action)
+'b'	SMFIR_REPLBODY	Replace body (modification action)
 
-char	buf[]		Full body
-
-(XXX: It appears that this command must be sent with a full,
-single-chunk body segment as one packet.  The link/packet protocol
-allows for this, but it has not been investigated further.  This will be
-clarified in a future revision of this document.)
+char	buf[]		Full body, as a single packet
 
 **
 
@@ -399,13 +393,21 @@ should be deleted entirely.)
 
 **
 
-'p'	SMFIR_PROGRESS	Progress (modification action)
+'p'	SMFIR_PROGRESS	Progress (asynchronous action)
 
-(XXX: This appears to be a packet intended to keep from timing out the
-milter_read routine in Sendmail if end-of-message processing is
-expensive.  The data appears to be ignored in 8.11.6, so it is probably
-meant to be empty.  This will be clarified in a future revision of this
-document.)
+This is an asynchronous response which is sent to the MTA to reset the
+communications timer during long operations.  The MTA should consume
+as many of these responses as are sent, waiting for the real response
+for the issued command.
+
+**
+
+'q'	SMFIR_QUARANTINE Quarantine message (modification action)
+char	reason[]	Reason for quarantine, NUL terminated
+
+This quarantines the message into a holding pool defined by the MTA. 
+(First implemented in Sendmail in version 8.13; offered to the milter by 
+the SMFIF_QUARANTINE flag in "actions" of SMFIC_OPTNEG.)
 
 **
 

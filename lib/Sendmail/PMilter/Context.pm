@@ -1,4 +1,4 @@
-# $Id: Context.pm,v 1.10 2004/03/25 18:47:35 tvierling Exp $
+# $Id: Context.pm,v 1.17 2004/08/04 17:07:51 tvierling Exp $
 #
 # Copyright (c) 2002-2004 Todd Vierling <tv@pobox.com> <tv@duh.org>
 # All rights reserved.
@@ -44,7 +44,7 @@ use UNIVERSAL;
 
 use Sendmail::PMilter qw(:all);
 
-our $VERSION = '0.93';
+our $VERSION = '0.94';
 
 =pod
 
@@ -93,6 +93,8 @@ use constant SMFIC_EOH		=> 'N';
 use constant SMFIC_OPTNEG	=> 'O';
 use constant SMFIC_RCPT		=> 'R';
 use constant SMFIC_QUIT		=> 'Q';
+use constant SMFIC_DATA		=> 'T'; # v4
+use constant SMFIC_UNKNOWN	=> 'U'; # v3
 
 use constant SMFIR_ADDRCPT	=> '+';
 use constant SMFIR_DELRCPT	=> '-';
@@ -101,9 +103,12 @@ use constant SMFIR_REPLBODY	=> 'b';
 use constant SMFIR_CONTINUE	=> 'c';
 use constant SMFIR_DISCARD	=> 'd';
 use constant SMFIR_ADDHEADER	=> 'h';
+use constant SMFIR_INSHEADER	=> 'i'; # v3, or v2 and Sendmail 8.13+
 use constant SMFIR_CHGHEADER	=> 'm';
 use constant SMFIR_PROGRESS	=> 'p';
+use constant SMFIR_QUARANTINE	=> 'q';
 use constant SMFIR_REJECT	=> 'r';
+use constant SMFIR_SETSENDER	=> 's';
 use constant SMFIR_TEMPFAIL	=> 't';
 use constant SMFIR_REPLYCODE	=> 'y';
 
@@ -127,9 +132,12 @@ my %replynames = map { &{$_} => $_ } qw(
 	SMFIR_CONTINUE
 	SMFIR_DISCARD
 	SMFIR_ADDHEADER
+	SMFIR_INSHEADER
 	SMFIR_CHGHEADER
 	SMFIR_PROGRESS
+	SMFIR_QUARANTINE
 	SMFIR_REJECT
+	SMFIR_SETSENDER
 	SMFIR_TEMPFAIL
 	SMFIR_REPLYCODE
 );
@@ -171,11 +179,11 @@ sub main ($) {
 
 	$socket->autoflush(1);
 
-	$this->{symboltype} = '';
+	$this->{lastsymbol} = '';
 
 	eval {
 		while (1) {
-			$this->read_block(\$buf, 4) || die "EOF in stream\n";
+			$this->read_block(\$buf, 4) || last;
 			my $len = unpack('N', $buf);
 
 			die "bad packet length $len\n" if ($len <= 0 || $len > 131072);
@@ -187,12 +195,8 @@ sub main ($) {
 			# get actual data
 			$this->read_block(\$buf, $len - 1) || die "EOF in stream\n";
 
-			if ($cmd ne SMFIC_MACRO && $cmd ne $this->{symboltype}) {
-				delete $this->{symbols};
-				$this->{symboltype} = '';
-			}
-
 			if ($cmd eq SMFIC_ABORT) {
+				delete $this->{symbols}{&SMFIC_MAIL};
 				$this->call_hooks('abort');
 			} elsif ($cmd eq SMFIC_BODY) {
 				$this->call_hooks('body', $buf, length($buf));
@@ -229,11 +233,8 @@ sub main ($) {
 			} elsif ($cmd eq SMFIC_MACRO) {
 				die "SMFIC_MACRO: empty packet\n" unless ($buf =~ s/^(.)//);
 
-				my $code = $1;
+				my $code = $this->{lastsymbol} = $1;
 				my $marray = &$split_buf;
-
-				$this->{symbols} = {} unless ($code eq $this->{symboltype});
-				$this->{symboltype} = $code;
 
 				# odd number of entries: give last empty value
 				push(@$marray, '') if ((@$marray & 1) != 0);
@@ -241,7 +242,7 @@ sub main ($) {
 				my %macros = @$marray;
 
 				while (my ($name, $value) = each(%macros)) {
-					$this->{symbols}{$name} = $value;
+					$this->{symbols}{$code}{$name} = $value;
 				}
 			} elsif ($cmd eq SMFIC_BODYEOB) {
 				$this->call_hooks('eom');
@@ -258,6 +259,9 @@ sub main ($) {
 
 				$this->call_hooks('header', @$header);
 			} elsif ($cmd eq SMFIC_MAIL) {
+				delete $this->{symbols}{&SMFIC_MAIL}
+					if ($this->{lastsymbol} ne SMFIC_MAIL);
+
 				my $envfrom = &$split_buf;
 				die "SMFIC_MAIL: bad packet\n" unless (@$envfrom >= 1);
 
@@ -278,6 +282,8 @@ sub main ($) {
 				die "SMFIC_RCPT: bad packet\n" unless (@$envrcpt >= 1);
 
 				$this->call_hooks('envrcpt', @$envrcpt);
+
+				delete $this->{symbols}{&SMFIC_RCPT};
 			} elsif ($cmd eq SMFIC_QUIT) {
 				last;
 				# that's all, folks!
@@ -313,7 +319,7 @@ sub read_block {
 
 	while ($len > $sofar) {
 		my $read = $socket->sysread($$bufref, $len - $sofar, $sofar);
-		return undef if ($read <= 0); # if EOF
+		return undef if (!defined($read) || $read <= 0); # if EOF
 		$sofar += $read;
 	}
 	1;
@@ -459,7 +465,13 @@ sub getsymval ($$) {
 	my $this = shift;
 	my $key = shift;
 
-	defined($this->{symbols}) ? $this->{symbols}{$key} : undef;
+	foreach my $code (SMFIC_RCPT, SMFIC_MAIL, SMFIC_HELO, SMFIC_CONNECT) {
+		my $val = $this->{symbols}{$code}{$key};
+
+		return $val if defined($val);
+	}
+
+	undef;
 }
 
 =pod
@@ -519,6 +531,28 @@ sub setreply ($$$$) {
 	1;
 }
 
+=item $ctx->shutdown()
+
+A special case of C<$ctx->setreply()> which sets the short numeric reply 
+code to 421 and the ESMTP code to 4.7.0.  Under Sendmail 8.13 and higher, 
+this will close the MTA's communication channel quickly, which should 
+immediately result in a "close" callback and end of milter execution. 
+(However, Sendmail 8.11-8.12 will treat this as a regular 4xx error and 
+will continue processing the message.)
+
+Always returns a true value.
+
+This method is an extension that is not available in the standard 
+Sendmail::Milter package.
+
+=cut
+
+sub shutdown ($) {
+	my $this = shift;
+
+	$this->setreply(421, '4.7.0', 'Closing communications channel');
+}
+
 ##### Protocol action methods
 
 =pod
@@ -532,7 +566,7 @@ Returns a true value on success, undef on failure.
 
 =cut
 
-sub addheader {
+sub addheader ($$$) {
 	my $this = shift;
 	my $header = shift || die "addheader: no header name\n";
 	my $value = shift || die "addheader: no header value\n";
@@ -555,7 +589,7 @@ Returns a true value on success, undef on failure.
 
 =cut
 
-sub addrcpt {
+sub addrcpt ($$) {
 	my $this = shift;
 	my $rcpt = shift || die "addrcpt: no recipient specified\n";
 
@@ -577,7 +611,7 @@ Returns a true value on success, undef on failure.
 
 =cut
 
-sub chgheader {
+sub chgheader ($$$$) {
 	my $this = shift;
 	my $header = shift || die "chgheader: no header name\n";
 	my $num = shift || 0;
@@ -607,7 +641,7 @@ rather that the command was queued for processing.
 
 =cut
 
-sub delrcpt {
+sub delrcpt ($$) {
 	my $this = shift;
 	my $rcpt = shift || die "delrcpt: no recipient specified\n";
 
@@ -615,6 +649,57 @@ sub delrcpt {
 	die "delrcpt: SMFIF_DELRCPT not in capability list\n" unless ($this->{callback_flags} & SMFIF_DELRCPT);
 
 	$this->write_packet(SMFIR_DELRCPT, "$rcpt\0");
+	1;
+}
+
+=pod
+
+=item $ctx->progress()
+
+Sends an asynchronous "progress" message to the MTA, which should reset 
+the MTA's internal communications timer.  This can allow longer than 
+normal operations, such as a deliberate delay, to continue running without 
+dropping the milter-MTA connection.  This command can be issued at any 
+time during any callback, although issuing it during a "close" callback 
+may trigger socket connection warnings in Perl.
+
+Always returns a true value.
+
+This method is an extension that is not available in the standard 
+Sendmail::Milter package.
+
+=cut
+
+sub progress ($) {
+	my $this = shift;
+
+	$this->write_packet(SMFIR_PROGRESS);
+	1;
+}
+
+=pod
+
+=item $ctx->quarantine(REASON)
+
+Quarantine the current message in the MTA-defined quarantine area, using 
+the given REASON as a text string describing the quarantine status.  Only 
+callable from the "eom" callback.
+
+Returns a true value on success, undef on failure.
+
+This method is an extension that is not available in the standard 
+Sendmail::Milter package.
+
+=cut
+
+sub quarantine ($$) {
+	my $this = shift;
+	my $reason = shift;
+
+	die "quarantine: called outside of EOM\n" if ($this->{cb} ne 'eom');
+	die "quarantine: SMFIF_QUARANTINE not in capability list\n" unless ($this->{callback_flags} & SMFIF_QUARANTINE);
+
+	$this->write_packet(SMFIR_QUARANTINE, "$reason\0");
 	1;
 }
 
@@ -631,7 +716,7 @@ Returns a true value on success, undef on failure.
 
 =cut
 
-sub replacebody {
+sub replacebody ($$) {
 	my $this = shift;
 	my $chunk = shift;
 
@@ -645,6 +730,33 @@ sub replacebody {
 	$socket->syswrite($len);
 	$socket->syswrite(SMFIR_REPLBODY);
 	$socket->syswrite($chunk);
+	1;
+}
+
+=pod
+
+=item $ctx->setsender(ADDRESS)
+
+Replace the envelope sender address for the given mail message.  This
+method provides an implementation to access the mlfi_setsender method
+added to the libmilter library as part of the mlfi-setsender project 
+(http://www.sourceforge.net/projects/mlfi-setsender).
+
+Returns a true value on success, undef on failure.  A success return does
+not necessarily indicate that the recipient was successfully removed, but
+rather that the command was queued for processing.
+
+=cut
+
+sub setsender ($$) {
+	my $this = shift;
+	my $sender = shift || die "setsender: no sender specified\n";
+
+	die "setsender: not enabled (see \"perldoc Sendmail::PMilter\" for information)\n" unless $Sendmail::PMilter::enable_setsender;
+	die "setsender: called outside of EOM\n" if ($this->{cb} ne 'eom');
+	die "setsender: SMFIF_SETSENDER not in capability list\n" unless ($this->{callback_flags} & SMFIF_SETSENDER);
+
+	$this->write_packet(SMFIR_SETSENDER, "$sender\0");
 	1;
 }
 

@@ -1,4 +1,4 @@
-# $Id: PMilter.pm,v 1.18 2004/03/25 18:47:35 tvierling Exp $
+# $Id: PMilter.pm,v 1.28 2004/08/04 17:08:34 tvierling Exp $
 #
 # Copyright (c) 2002-2004 Todd Vierling <tv@pobox.com> <tv@duh.org>
 # All rights reserved.
@@ -46,7 +46,7 @@ use Socket;
 use Symbol;
 use UNIVERSAL;
 
-our $VERSION = '0.93';
+our $VERSION = '0.94';
 our $DEBUG = 0;
 
 =pod
@@ -99,6 +99,8 @@ my @smflags = qw(
 	SMFIF_DELRCPT
 	SMFIF_CHGHDRS
 	SMFIF_MODBODY
+	SMFIF_QUARANTINE
+	SMFIF_SETSENDER
 
 	SMFI_V1_ACTS
 	SMFI_V2_ACTS
@@ -108,6 +110,11 @@ our @EXPORT_OK = (@smflags, qw(
 	%DEFAULT_CALLBACKS
 ));
 our %EXPORT_TAGS = ( all => [ @smflags ] );
+
+use constant SMFIF_QUARANTINE	=> 0x20;
+use constant SMFIF_SETSENDER	=> 0x40;
+
+our $enable_setsender = 0;
 
 ##### Methods
 
@@ -179,6 +186,12 @@ sub main ($;$$) {
 
 	croak 'main: socket not bound' unless defined($this->{socket});
 	croak 'main: callbacks not registered' unless defined($this->{callbacks});
+
+	my $max_interpreters = shift;
+	my $max_requests = shift;
+
+	$this->{max_interpreters} = $max_interpreters if (defined($max_interpreters) && $max_interpreters !~ /\D/);
+	$this->{max_requests} = $max_requests if (defined($max_requests) && $max_requests !~ /\D/);
 
 	my $dispatcher = $this->{dispatcher};
 
@@ -633,7 +646,7 @@ that may be passed directly to C<set_dispatcher()>.
 The C<ithread> dispatcher spins up a new thread upon each connection to
 the milter socket.  This provides a thread-based model that may be more
 resource efficient than the similar C<postfork> dispatcher.  This requires
-that the Perl interpreter be compiled with C<-Dusethreads>, and uses the
+that the Perl interpreter be compiled with C<-Duseithreads>, and uses the
 C<threads> module (available on Perl 5.8 or later only).
 
 =cut
@@ -644,7 +657,7 @@ sub ithread_dispatcher {
 
 	my $nchildren = 0;
 
-	threads::shared::share($nchildren);
+	threads::shared::share(\$nchildren);
 
 	sub {
 		my $this = shift;
@@ -654,7 +667,7 @@ sub ithread_dispatcher {
 
 		my $siginfo = exists($SIG{INFO}) ? 'INFO' : 'USR1';
 		local $SIG{$siginfo} = sub {
-			print STDERR "Number of active children: $nchildren\n" if ($DEBUG > 0);
+			warn "Number of active children: $nchildren\n";
 		};
 
 		my $child_sub = sub {
@@ -668,7 +681,7 @@ sub ithread_dispatcher {
 
 			lock($nchildren);
 			$nchildren--;
-			warn $died if defined($died);
+			warn $died if $died;
 		};
 
 		while (1) {
@@ -707,46 +720,67 @@ sub ithread_dispatcher {
 
 =pod
 
-=item Sendmail::PMilter::prefork_dispatcher()
+=item Sendmail::PMilter::prefork_dispatcher([PARAMS])
 
 =item (environment) PMILTER_DISPATCHER=prefork
 
 The C<prefork> dispatcher forks the main Perl process before accepting
 connections, and uses the main process to monitor the children.  This
 should be appropriate for steady traffic flow sites.  Note that if
-MAXINTERP is not set in the call to C<main()>, an internal default of 10
-processes will be used; similarly, if MAXREQ is not set, 100 requests will
-be served per child.
+MAXINTERP is not set in the call to C<main()> or in PARAMS, an internal
+default of 10 processes will be used; similarly, if MAXREQ is not set, 100
+requests will be served per child.
 
-Currently the child process pool is fixed-size:  discarded children will be
-immediately replaced.  This may change to use a dynamic sizing method in the
-future, more like the Apache webserver's fork-based model.
+Currently the child process pool is fixed-size:  discarded children will
+be immediately replaced.  This may change to use a dynamic sizing method
+in the future, more like the Apache webserver's fork-based model.
+
+PARAMS, if specified, is a hash of key-value pairs defining parameters for
+the dispatcher.  The available parameters that may be set are:
+
+=over 2
+
+=item max_children
+
+Maximum number of child processes active at any time.  Equivalent to the
+MAXINTERP option to main() -- if not set in the main() call, this value
+will be used.
+
+=item max_requests_per_child
+
+Maximum number of requests a child process may service before being
+recycled.  Equivalent to the MAXREQ option to main() -- if not set in the
+main() call, this value will be used.
+
+=back
 
 =cut
 
-sub prefork_dispatcher () {
+sub prefork_dispatcher (@) {
+	my %params = @_;
 	my %children;
 
 	my $child_dispatcher = sub {
 		my $this = shift;
 		my $lsocket = shift;
 		my $handler = shift;
-		my $max_requests = $this->get_max_requests() || 100;
+		my $max_requests = $this->get_max_requests() || $params{max_requests_per_child} || 100;
 		my $i = 0;
 
 		local $SIG{PIPE} = 'IGNORE'; # so close_callback will be reached
 
 		my $siginfo = exists($SIG{INFO}) ? 'INFO' : 'USR1';
 		local $SIG{$siginfo} = sub {
-			print STDERR "$$: requests handled: $i\n" if ($DEBUG > 0);
+			warn "$$: requests handled: $i\n";
 		};
 
-		for (; $i < $max_requests; $i++) {
+		while ($i < $max_requests) {
 			my $socket = $lsocket->accept();
 			next if $!{EINTR};
 
 			warn "$$: incoming connection\n" if ($DEBUG > 0);
 
+			$i++;
 			&$handler($socket);
 			$socket->close();
 		}
@@ -767,7 +801,7 @@ sub prefork_dispatcher () {
 
 	sub {
 		my $this = $_[0];
-		my $maxchildren = $this->get_max_interpreters() || 10;
+		my $maxchildren = $this->get_max_interpreters() || $params{max_children} || 10;
 
 		while (1) {
 			while (scalar keys %children < $maxchildren) {
@@ -834,7 +868,7 @@ sub postfork_dispatcher () {
 
 		my $siginfo = exists($SIG{INFO}) ? 'INFO' : 'USR1';
 		local $SIG{$siginfo} = sub {
-			print STDERR "Number of active children: $nchildren\n" if ($DEBUG > 0);
+			warn "Number of active children: $nchildren\n";
 		};
 
 		while (1) {
@@ -952,14 +986,37 @@ are not known, however, C<SMFI_CURR_ACTS> should be used.
 
   SMFIF_ADDHDRS - allow $ctx->addheader()
   SMFIF_CHGBODY - allow $ctx->replacebody()
+  SMFIF_MODBODY - (compatibility synonym for SMFIF_CHGBODY)
   SMFIF_ADDRCPT - allow $ctx->addrcpt()
   SMFIF_DELRCPT - allow $ctx->delrcpt()
   SMFIF_CHGHDRS - allow $ctx->chgheader()
-  SMFIF_MODBODY - (compatibility synonym for SMFIF_CHGBODY)
 
-  SMFI_V1_ACTS - all except SMFIF_CHGHDRS
-  SMFI_V2_ACTS - all of the above
-  SMFI_CURR_ACTS - all of the above
+  SMFIF_QUARANTINE - allow $ctx->quarantine()
+    (requires Sendmail 8.13; not defined in Sendmail::Milter)
+
+  SMFIF_SETSENDER - allow $ctx->setsender()
+    (requires special Sendmail patch; see below[*])
+
+  SMFI_V1_ACTS - SMFIF_ADDHDRS through SMFIF_DELRCPT
+    (Sendmail 8.11 _FFR_MILTER capabilities)
+
+  SMFI_V2_ACTS - SMFIF_ADDHDRS through SMFIF_CHGHDRS
+  SMFI_CURR_ACTS - (compatibility synonym for SMFI_V2_ACTS)
+    (Sendmail 8.12 capabilities)
+
+  (Currently no combined macro includes SMFIF_QUARANTINE or
+  SMFIF_SETSENDER.)
+
+[*] NOTE: SMFIF_SETSENDER is not official as of Sendmail 8.13.x. To enable
+this flag, Sendmail must be patched with the diff available from:
+
+  C<http://www.sourceforge.net/projects/mlfi-setsender>
+
+Additionally, the following statement must appear after the "use"
+statements in your milter program; otherwise, setsender() will always fail
+when called:
+
+  local $Sendmail::PMilter::enable_setsender = 1;
 
 =back
 
