@@ -2,6 +2,10 @@ $Id: Changes,v 1.28 2004/08/10 21:10:36 tvierling Exp $
 
 Revision history for Perl extension Sendmail::PMilter.
 
+0.96  Sat Jul 07 18:27:25 2007 UTC
+    - Changed threads::shared::share(\$nchildren) to
+      threads::shared::share($nchildren), this should fix some failing smokes
+
 0.95  Tue Aug 10 21:10:35 2004 UTC
 	- fixed installation location of Sendmail::Milter; it was quite wrong
 		(reported by SL <milter@free.fr>)

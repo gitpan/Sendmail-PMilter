@@ -46,7 +46,7 @@ use Socket;
 use Symbol;
 use UNIVERSAL;
 
-our $VERSION = '0.95';
+our $VERSION = '0.96';
 our $DEBUG = 0;
 
 =pod
@@ -657,7 +657,7 @@ sub ithread_dispatcher {
 
 	my $nchildren = 0;
 
-	threads::shared::share(\$nchildren);
+	threads::shared::share($nchildren);
 
 	sub {
 		my $this = shift;
