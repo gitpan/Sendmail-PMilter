@@ -1,13 +1,13 @@
 --- #YAML:1.0
 name:                Sendmail-PMilter
-version:             0.96
+version:             0.97
 abstract:            Perl binding of Sendmail Milter protocol
 license:             ~
-generated_by:        ExtUtils::MakeMaker version 6.36
+author:              
+    - Todd Vierling <tv@duh.org>
+generated_by:        ExtUtils::MakeMaker version 6.44
 distribution_type:   module
 requires:     
 meta-spec:
-    url:     http://module-build.sourceforge.net/META-spec-v1.2.html
-    version: 1.2
-author:
-    - Todd Vierling <tv@duh.org>
+    url:     http://module-build.sourceforge.net/META-spec-v1.3.html
+    version: 1.3
