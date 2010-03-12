@@ -46,7 +46,7 @@ use Socket;
 use Symbol;
 use UNIVERSAL;
 
-our $VERSION = '0.97';
+our $VERSION = '0.98';
 our $DEBUG = 0;
 
 =pod
@@ -404,7 +404,7 @@ will be passed the arguments:
 MILTER is the milter object currently running.  LSOCKET is a listening
 socket (an instance of C<IO::Socket>), upon which C<accept()> should be
 called.  HANDLER is a subroutine reference which should be called, passing
-the socket object returned by C<LSOCKET->accept()>.
+the socket object returned by C<< LSOCKET->accept() >>.
 
 Note that the dispatcher may also be set from one of the off-the-shelf
 dispatchers noted in this document by setting the PMILTER_DISPATCHER
@@ -740,6 +740,16 @@ the dispatcher.  The available parameters that may be set are:
 
 =over 2
 
+=item child_init
+
+subroutine reference that will be called after each child process is forked.
+It will be passed the C<MILTER> object.
+
+=item child_exit
+
+subroutine reference that will be called just before each child process
+terminates.  It will be passed the C<MILTER> object.
+
 =item max_children
 
 Maximum number of child processes active at any time.  Equivalent to the
@@ -774,6 +784,12 @@ sub prefork_dispatcher (@) {
 			warn "$$: requests handled: $i\n";
 		};
 
+		# call child_init handler if present
+		if (defined $params{child_init}) {
+			my $method = $params{child_init};
+			$this->$method();
+		}
+
 		while ($i < $max_requests) {
 			my $socket = $lsocket->accept();
 			next if $!{EINTR};
@@ -783,6 +799,12 @@ sub prefork_dispatcher (@) {
 			$i++;
 			&$handler($socket);
 			$socket->close();
+		}
+
+		# call child_exit handler if present
+		if (defined $params{child_exit}) {
+			my $method = $params{child_exit};
+			$this->$method();
 		}
 	};
 
@@ -1051,15 +1073,37 @@ in detail here.
 
 Todd Vierling, E<lt>tv@duh.orgE<gt> E<lt>tv@pobox.comE<gt>
 
+=head1 Maintenance
+
+Since 0.96 Sendmail::Pmilter is no longer maintained on
+sourceforge.net, cpan:AVAR took it over in version 0.96 to fix a minor
+bug and currently owns the module in PAUSE.
+
+However this module is effectively orphaned and looking for a new
+maintainer. The current maintainer doesn't use Sendmail and probably
+never will again. If this code is important to you and you find a bug
+in it or want something new implemented please:
+
+=over
+
+=item *
+
+Fork it & fix it on GitHub at
+L<http://github.com/avar/sendmail-pmilter>
+
+=item *
+
+Send AVAR an E-Mail requesting upload permissions so you can upload
+the fixed version to the CPAN.
+
+=back
+
 =head1 SEE ALSO
 
 L<Sendmail::PMilter::Context> for a description of the arguments
 passed to each callback function
 
 The project homepage:  http://pmilter.sourceforge.net/
-
-http://sendmail-milter.sourceforge.net/ for a description of the
-current official release of the Sendmail::Milter interface.
 
 =head1 THANKS
 
