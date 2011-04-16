@@ -46,7 +46,7 @@ use Socket;
 use Symbol;
 use UNIVERSAL;
 
-our $VERSION = '0.99';
+our $VERSION = '1.00';
 our $DEBUG = 0;
 
 =pod
@@ -895,7 +895,7 @@ sub postfork_dispatcher () {
 
 		while (1) {
 			my $socket = $lsocket->accept();
-			next if $!{EINTR};
+			next if !$socket;
 
 			warn "$$: incoming connection\n" if ($DEBUG > 0);
 
